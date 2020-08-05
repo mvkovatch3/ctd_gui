@@ -1,0 +1,8 @@
+name: ctd_gui
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - pandas
+  - gsw
+  - bokeh
