@@ -2,7 +2,7 @@
 
 ## Quickstart
 
-``` git clone https://github.com/mvkovatch3/ctd_gui.git```
+``` git clone https://github.com/mvkovatch3/ctd_gui.git
 ## Unzip the data zip file into the ctd_gui directory
 conda env create -f ctd_gui.yml
 bokeh serve --show ctd_gui.py
