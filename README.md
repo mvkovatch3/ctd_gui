@@ -12,4 +12,4 @@ bokeh serve --show ctd_gui.py
 ```
 
 Once installed, code can be run by calling:
-  bokeh serve [--show] ctd_gui.py
+```bokeh serve [--show] ctd_gui.py```
