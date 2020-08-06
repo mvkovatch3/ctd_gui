@@ -2,6 +2,8 @@
 
 ctd_gui (name in progress) is a Python package for manually flagging oceanographic CTD data with a GUI. It was recently split off from the ctdcal package to better handle a wider variety of use cases.
 
+![demo](https://github.com/mvkovatch3/ctd_gui/blob/master/demo.gif?raw=true)
+
 ## Quickstart
 
 ``` 
