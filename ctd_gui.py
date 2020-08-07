@@ -1,7 +1,8 @@
 import pandas as pd
-import glob
-import pickle
+from pathlib import Path
 import gsw
+
+import ctd_io
 
 from bokeh.io import curdoc
 from bokeh.layouts import column, row
@@ -22,40 +23,20 @@ from bokeh.models import (
 # TODO: abstract parts of this to a separate file
 # TODO: following above, make parts reusable?
 
+ssscc_list = sorted(Path("data/pressure/").glob("*.csv"))
+ssscc_list = [x.stem.split("_")[0] for x in ssscc_list]
+
 # load continuous CTD data and make into a dict (only ~20MB)
-file_list = sorted(glob.glob("data/pressure/*ct1.csv"))
-ssscc_list = [ssscc.strip("data/pressure/")[:5] for ssscc in file_list]
-ctd_data = []
-for f in file_list:
-    df = pd.read_csv(f, header=12, skiprows=[13], skipfooter=1, engine="python")
-    df["SSSCC"] = f.strip("data/pressure/")[:5]
-    ctd_data.append(df)
-ctd_data = pd.concat(ctd_data, axis=0, sort=False)
+ctd_data = ctd_io.load_ct1(dir="data/pressure/")
 
 # load bottle trip file
-file_list = sorted(glob.glob("data/bottle/*.pkl"))
-ssscc_list = [ssscc.strip("data/bottle/")[:5] for ssscc in file_list]
-upcast_data = []
-for f in file_list:
-    with open(f, "rb") as x:
-        df = pickle.load(x)
-        df["SSSCC"] = f.strip("data/bottle/")[:5]
-        # change to secondary if that is what's used
-        upcast_data.append(df[["SSSCC", "CTDCOND1", "CTDTMP1", "CTDPRS"]])
-upcast_data = pd.concat(upcast_data, axis=0, sort=False)
+upcast_data = ctd_io.load_pkl(dir="data/bottle/")
 upcast_data["CTDSAL"] = gsw.SP_from_C(
     upcast_data["CTDCOND1"], upcast_data["CTDTMP1"], upcast_data["CTDPRS"]
 )
 
-# load salt file (adapted from compare_salinities.ipynb)
-file_list = sorted(glob.glob("data/salt/*.csv"))
-ssscc_list = [ssscc.strip("data/salt/")[:5] for ssscc in file_list]
-salt_data = []
-for f in file_list:
-    df = pd.read_csv(f, usecols=["STNNBR", "CASTNO", "SAMPNO", "SALNTY"])
-    df["SSSCC"] = f.strip("data/salt/")[:5]
-    salt_data.append(df)
-salt_data = pd.concat(salt_data, axis=0, sort=False)
+# load salt file
+salt_data = ctd_io.load_salt(dir="data/salt/")
 salt_data["SALNTY"] = salt_data["SALNTY"].round(4)
 if "SALNTY_FLAG_W" not in salt_data.columns:
     salt_data["SALNTY_FLAG_W"] = 2
@@ -88,7 +69,7 @@ btl_data["New Flag"] = btl_data["SALNTY_FLAG_W"].copy()
 
 # update with old handcoded flags if file exists
 handcoded_file = "salt_flags_handcoded.csv"
-if glob.glob(handcoded_file):
+if Path(handcoded_file).exists():
     handcodes = pd.read_csv(handcoded_file, dtype={"SSSCC": str}, keep_default_na=False)
     handcodes = handcodes.rename(columns={"salinity_flag": "New Flag"}).drop(
         columns="diff"
