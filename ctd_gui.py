@@ -1,8 +1,10 @@
 import pandas as pd
 from pathlib import Path
 import gsw
+from functools import partial
 
 import ctd_io
+import callbacks as cb
 
 from bokeh.io import curdoc
 from bokeh.layouts import column, row
@@ -186,153 +188,61 @@ btl_sal.nonselection_glyph.line_alpha = 0.2
 ctd_sal.nonselection_glyph.fill_alpha = 1  # makes CTDSAL *not* change on select
 upcast_sal.nonselection_glyph.fill_alpha = 1  # makes CTDSAL *not* change on select
 
-# define callback functions
-
-
-def update_selectors():
-
-    ctd_rows = ctd_data["SSSCC"] == station.value
-    table_rows = btl_data["SSSCC"] == station.value
-    btl_rows = (btl_data["New Flag"].isin(flag_list.value)) & (
-        btl_data["SSSCC"] == station.value
-    )
-
-    # update table data
-    current_table = btl_data[table_rows].reset_index()
-    src_table.data = {  # this causes edit_flag() to execute
-        "SSSCC": current_table["SSSCC"],
-        "SAMPNO": current_table["SAMPNO"],
-        "CTDPRS": current_table["CTDPRS"],
-        "CTDSAL": current_table["CTDSAL"],
-        "SALNTY": current_table["SALNTY"],
-        "diff": current_table["Residual"],
-        "flag": current_table["New Flag"],
-        "Comments": current_table["Comments"],
-    }
-
-    # update plot data
-    src_plot_trace.data = {
-        "x": ctd_data.loc[ctd_rows, parameter.value],
-        "y": ctd_data.loc[ctd_rows, "CTDPRS"],
-    }
-    src_plot_ctd.data = {
-        "x": btl_data.loc[table_rows, parameter.value],
-        "y": btl_data.loc[table_rows, "CTDPRS"],
-    }
-    src_plot_upcast.data = {
-        "x": upcast_data.loc[upcast_data["SSSCC"] == station.value, "CTDSAL"],
-        "y": upcast_data.loc[upcast_data["SSSCC"] == station.value, "CTDPRS"],
-    }
-    src_plot_btl.data = {
-        "x": btl_data.loc[btl_rows, "SALNTY"],
-        "y": btl_data.loc[btl_rows, "CTDPRS"],
-    }
-
-    # update plot labels/axlims
-    fig.title.text = "{} vs CTDPRS [Station {}]".format(parameter.value, station.value)
-    fig.xaxis.axis_label = parameter.value
-
-    # deselect all datapoints
-    btl_sal.data_source.selected.indices = []
-    src_table.selected.indices = []
-
-
-def edit_flag():
-
-    btl_data.loc[
-        btl_data["SSSCC"] == src_table.data["SSSCC"].values[0], "New Flag",
-    ] = src_table.data["flag"].values
-    btl_data.loc[
-        btl_data["SSSCC"] == src_table.data["SSSCC"].values[0], "Comments",
-    ] = src_table.data["Comments"].values
-
-    edited_rows = (btl_data["New Flag"].isin([3, 4])) | (btl_data["Comments"] != "")
-
-    src_table_changes.data = {
-        "SSSCC": btl_data.loc[edited_rows, "SSSCC"],
-        "SAMPNO": btl_data.loc[edited_rows, "SAMPNO"],
-        "diff": btl_data.loc[edited_rows, "Residual"],
-        "flag_old": btl_data.loc[edited_rows, "SALNTY_FLAG_W"],
-        "flag_new": btl_data.loc[edited_rows, "New Flag"],
-        "Comments": btl_data.loc[edited_rows, "Comments"],
-    }
-
-
-def apply_flag():
-
-    table_rows = btl_data["SSSCC"] == station.value
-    selected_rows = src_table.selected.indices
-
-    # update table data
-    current_table = btl_data[table_rows].reset_index()
-    current_table.loc[selected_rows, "New Flag"] = int(flag_input.value)
-    src_table.data = {  # this causes edit_flag() to execute
-        "SSSCC": current_table["SSSCC"],
-        "SAMPNO": current_table["SAMPNO"],
-        "CTDPRS": current_table["CTDPRS"],
-        "CTDSAL": current_table["CTDSAL"],
-        "SALNTY": current_table["SALNTY"],
-        "diff": current_table["Residual"],
-        "flag": current_table["New Flag"],
-        "Comments": current_table["Comments"],
-    }
-
-
-def apply_comment():
-
-    table_rows = btl_data["SSSCC"] == station.value
-    selected_rows = src_table.selected.indices
-
-    # update table data
-    current_table = btl_data[table_rows].reset_index()
-    current_table.loc[selected_rows, "Comments"] = comment_box.value
-    src_table.data = {  # this causes edit_flag() to execute
-        "SSSCC": current_table["SSSCC"],
-        "SAMPNO": current_table["SAMPNO"],
-        "CTDPRS": current_table["CTDPRS"],
-        "CTDSAL": current_table["CTDSAL"],
-        "SALNTY": current_table["SALNTY"],
-        "diff": current_table["Residual"],
-        "flag": current_table["New Flag"],
-        "Comments": current_table["Comments"],
-    }
-
-
-def save_data():
-
-    # get data from table
-    df_out = pd.DataFrame.from_dict(src_table_changes.data)
-
-    # minor changes to columns/names/etc.
-    df_out = df_out.rename(columns={"flag_new": "salinity_flag"}).drop(
-        columns="flag_old"
-    )
-
-    # save it
-    df_out.to_csv("salt_flags_handcoded.csv", index=None)
-
-
-def selected_from_plot(attr, old, new):
-
-    src_table.selected.indices = new
-
-
-def selected_from_table(attr, old, new):
-
-    btl_sal.data_source.selected.indices = new
-
-
 # set up change callbacks
-parameter.on_change("value", lambda attr, old, new: update_selectors())
-station.on_change("value", lambda attr, old, new: update_selectors())
-flag_list.on_change("value", lambda attr, old, new: update_selectors())
-flag_button.on_click(apply_flag)
-comment_button.on_click(apply_comment)
-save_button.on_click(save_data)
-src_table.on_change("data", lambda attr, old, new: edit_flag())
-src_table.selected.on_change("indices", selected_from_table)
-btl_sal.data_source.selected.on_change("indices", selected_from_plot)
-
+for x in [parameter, station, flag_list]:
+    x.on_change(
+        "value",
+        partial(
+            cb.update_selectors,
+            ctd_data=ctd_data,
+            btl_data=btl_data,
+            upcast_data=upcast_data,
+            btl_sal=btl_sal,
+            station=station,
+            flag_list=flag_list,
+            parameter=parameter,
+            src_table=src_table,
+            src_plot_trace=src_plot_trace,
+            src_plot_ctd=src_plot_ctd,
+            src_plot_upcast=src_plot_upcast,
+            src_plot_btl=src_plot_btl,
+            fig=fig,
+        ),
+    )
+flag_button.on_click(
+    partial(
+        cb.apply_flag,
+        btl_data=btl_data,
+        station=station,
+        src_table=src_table,
+        flag_input=flag_input,
+    )
+)
+comment_button.on_click(
+    partial(
+        cb.apply_comment,
+        btl_data=btl_data,
+        station=station,
+        src_table=src_table,
+        comment_box=comment_box,
+    )
+)
+save_button.on_click(partial(cb.save_data, src_table_changes=src_table_changes))
+src_table.on_change(
+    "data",
+    partial(
+        cb.edit_flag,
+        btl_data=btl_data,
+        src_table=src_table,
+        src_table_changes=src_table_changes,
+    ),
+)
+src_table.selected.on_change(
+    "indices", partial(cb.selected_from_table, btl_sal=btl_sal)
+)
+btl_sal.data_source.selected.on_change(
+    "indices", partial(cb.selected_from_plot, src_table=src_table)
+)
 
 # build data tables
 columns = []
@@ -417,4 +327,21 @@ tables = column(
 curdoc().add_root(row(controls, tables, fig))
 curdoc().title = "CTDO Data Flagging Tool"
 
-update_selectors()
+cb.update_selectors(
+    attr=None,
+    old=None,
+    new=None,
+    ctd_data=ctd_data,
+    btl_data=btl_data,
+    upcast_data=upcast_data,
+    btl_sal=btl_sal,
+    station=station,
+    flag_list=flag_list,
+    parameter=parameter,
+    src_table=src_table,
+    src_plot_trace=src_plot_trace,
+    src_plot_ctd=src_plot_ctd,
+    src_plot_upcast=src_plot_upcast,
+    src_plot_btl=src_plot_btl,
+    fig=fig,
+)
