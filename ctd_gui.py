@@ -2,6 +2,10 @@ import pandas as pd
 import glob
 import pickle
 import gsw
+from pathlib import Path
+import base64
+import pickle
+from io import StringIO
 
 from bokeh.io import curdoc
 from bokeh.layouts import column, row
@@ -17,6 +21,7 @@ from bokeh.models import (
     Div,
     TextInput,
     BoxSelectTool,
+    FileInput,
 )
 
 # TODO: abstract parts of this to a separate file
@@ -103,6 +108,9 @@ if glob.glob(handcoded_file):
     ).drop(columns=["New Flag_y", "Comments_y"])
 
 # intialize widgets
+file_input = FileInput(accept=".csv, .pkl", multiple=True)
+file_type = Select(title="File Type", options=["Bottle", "Continuous/CTD"])
+import_button = Button(label="Import data", button_type="primary")
 save_button = Button(label="Save flagged data", button_type="success")
 parameter = Select(title="Parameter", options=["CTDSAL", "CTDTMP"], value="CTDSAL")
 ref_param = Select(title="Reference", options=["SALNTY"], value="SALNTY")
@@ -148,6 +156,7 @@ bulk_flag_text = Div(
 )
 
 # set up datasources
+src_import_table = ColumnDataSource(data=dict())
 src_table = ColumnDataSource(data=dict())
 src_table_changes = ColumnDataSource(data=dict())
 src_plot_trace = ColumnDataSource(data=dict(x=[], y=[]))
@@ -206,6 +215,30 @@ ctd_sal.nonselection_glyph.fill_alpha = 1  # makes CTDSAL *not* change on select
 upcast_sal.nonselection_glyph.fill_alpha = 1  # makes CTDSAL *not* change on select
 
 # define callback functions
+
+
+def load_files(attr, old, new):
+
+    for fname, fdata in zip(file_input.filename, file_input.value):
+        file_ext = Path(fname).suffix
+        if file_ext == ".csv":
+            print(f"Uploading {file_ext}")
+            df = pd.read_csv(
+                StringIO(base64.b64decode(fdata.encode("ascii")).decode("ascii"))
+            )
+        elif file_ext == ".pkl":
+            print(f"Uploading {file_ext}")
+            df = pickle.loads(base64.b64decode(fdata))
+        """
+        add your own loader:
+        elif file_ext == "...":
+            df = ...
+        """
+
+        columns = [TableColumn(field=c, title=c, width=125) for c in df.columns]
+        import_table.columns = columns
+        src_import_table.data = df.to_dict("series")
+        import_table.visible = True
 
 
 def update_selectors():
@@ -342,6 +375,7 @@ def selected_from_table(attr, old, new):
 
 
 # set up change callbacks
+file_input.on_change("value", load_files)
 parameter.on_change("value", lambda attr, old, new: update_selectors())
 station.on_change("value", lambda attr, old, new: update_selectors())
 flag_list.on_change("value", lambda attr, old, new: update_selectors())
@@ -392,6 +426,18 @@ for (field, title, width) in zip(fields, titles, widths):
         formatter=StringFormatter(**strfmt_in)
     ))
 
+import_table = DataTable(
+    source=src_import_table,
+    index_width=20,
+    width=480 + 20,
+    height=200,
+    editable=True,
+    fit_columns=False,
+    sortable=False,
+    visible=False,
+)
+
+
 data_table = DataTable(
     source=src_table,
     columns=columns,
@@ -415,6 +461,13 @@ data_table_changed = DataTable(
 data_table_title = Div(text="""<b>All Station Data:</b>""", width=200, height=15)
 data_table_changed_title = Div(text="""<b>Flagged Data:</b>""", width=200, height=15)
 
+imports = column(
+    file_input,
+    file_type,
+    import_button,
+    width=200,
+)
+
 controls = column(
     parameter,
     ref_param,
@@ -427,13 +480,13 @@ controls = column(
     comment_button,
     vspace,
     save_button,
-    width=170,
+    width=200,
 )
 tables = column(
     data_table_title, data_table, data_table_changed_title, data_table_changed
 )
 
-curdoc().add_root(row(controls, tables, fig))
+curdoc().add_root(column(row(imports, import_table), row(controls, tables, fig)))
 curdoc().title = "CTDO Data Flagging Tool"
 
 update_selectors()
