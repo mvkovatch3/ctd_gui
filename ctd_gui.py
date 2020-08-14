@@ -154,6 +154,7 @@ src_plot_trace = ColumnDataSource(data=dict(x=[], y=[]))
 src_plot_ctd = ColumnDataSource(data=dict(x=[], y=[]))
 src_plot_upcast = ColumnDataSource(data=dict(x=[], y=[]))
 src_plot_btl = ColumnDataSource(data=dict(x=[], y=[]))
+src_plot_aux = ColumnDataSource(data=dict(S=[], T=[]))
 
 # set up plots
 fig = figure(
@@ -205,6 +206,22 @@ btl_sal.nonselection_glyph.line_alpha = 0.2
 ctd_sal.nonselection_glyph.fill_alpha = 1  # makes CTDSAL *not* change on select
 upcast_sal.nonselection_glyph.fill_alpha = 1  # makes CTDSAL *not* change on select
 
+fig_aux = figure(
+    plot_height=400,
+    plot_width=400,
+    tools="pan,box_zoom,wheel_zoom,box_select,reset",
+    x_axis_label="Salinity",
+    y_axis_label="Temperature"
+)
+t_s_plot = fig_aux.circle(
+    "S",
+    "T",
+    size=7,
+    source=src_plot_aux,
+)
+# TODO: add iso density lines
+# will need to use holoviews as bokeh doesn't have contour plots...
+
 # define callback functions
 
 
@@ -245,6 +262,10 @@ def update_selectors():
     src_plot_btl.data = {
         "x": btl_data.loc[btl_rows, "SALNTY"],
         "y": btl_data.loc[btl_rows, "CTDPRS"],
+    }
+    src_plot_aux.data = {
+        "S": btl_data.loc[btl_rows, "CTDSAL"],
+        "T": btl_data.loc[btl_rows, "CTDTMP"],
     }
 
     # update plot labels/axlims
@@ -339,6 +360,7 @@ def selected_from_plot(attr, old, new):
 def selected_from_table(attr, old, new):
 
     btl_sal.data_source.selected.indices = new
+    t_s_plot.data_source.selected.indices = new
 
 
 # set up change callbacks
@@ -351,6 +373,7 @@ save_button.on_click(save_data)
 src_table.on_change("data", lambda attr, old, new: edit_flag())
 src_table.selected.on_change("indices", selected_from_table)
 btl_sal.data_source.selected.on_change("indices", selected_from_plot)
+t_s_plot.data_source.selected.on_change("indices", selected_from_plot)
 
 
 # build data tables
@@ -433,7 +456,7 @@ tables = column(
     data_table_title, data_table, data_table_changed_title, data_table_changed
 )
 
-curdoc().add_root(row(controls, tables, fig))
+curdoc().add_root(row(controls, tables, fig, fig_aux))
 curdoc().title = "CTDO Data Flagging Tool"
 
 update_selectors()
